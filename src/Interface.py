@@ -13,24 +13,36 @@ from urllib.parse import urlparse
 import shutil
 import multiprocessing
 
-if getattr(sys, 'frozen', False):
+IS_FROZEN = getattr(sys, 'frozen', False)
+
+if IS_FROZEN:
+    app_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(sys.executable)))
     script_root = os.path.dirname(os.path.abspath(sys.executable))
-    core_dir = getattr(sys, '_MEIPASS', script_root)
+    bin_dir = os.path.join(app_dir, "bin")
+    app_icon_path = os.path.join(app_dir, "logo.ico")
+    
+    local_app_data = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    user_data_dir = os.path.join(local_app_data, "dlp_yisk")
+    persistent_core = os.path.join(user_data_dir, "data")
+    downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads", "dlp_yisk")
 else:
-    core_dir = os.path.dirname(os.path.abspath(__file__))
-    script_root = os.path.dirname(core_dir)
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    script_root = os.path.dirname(src_dir)
+    app_dir = os.path.join(script_root, "assets")
+    bin_dir = os.path.join(app_dir, "bin")
+    app_icon_path = os.path.join(app_dir, "logo.ico")
+    
+    persistent_core = os.path.join(script_root, "data")
+    downloads_dir = os.path.join(script_root, "downloads")
 
-bin_dir = os.path.join(core_dir, "bin")
+core_dir = app_dir
 
-downloads_dir = os.path.join(script_root, "downloads")
 videos_dir = os.path.join(downloads_dir, "videos")
 audios_dir = os.path.join(downloads_dir, "audios")
 playlists_dir = os.path.join(downloads_dir, "playlists")
 
-persistent_core = os.path.join(script_root, "core")
 os.makedirs(persistent_core, exist_ok=True)
-
-for d in [videos_dir, audios_dir, playlists_dir]:
+for d in [downloads_dir, videos_dir, audios_dir, playlists_dir]:
     os.makedirs(d, exist_ok=True)
 
 identity_args = [
@@ -276,9 +288,8 @@ def your_language(root, config_path, on_lang_selected_callback):
     apply_dark_title_bar(window_lang)
     
     try:
-        icon_path = os.path.join(core_dir, "logo.ico")
-        if os.path.exists(icon_path):
-            window_lang.iconbitmap(icon_path)
+        if os.path.exists(app_icon_path):
+            window_lang.iconbitmap(app_icon_path)
     except:
         pass
         
@@ -341,9 +352,8 @@ def birthdate_(root, actual_language, config_path, on_save_callback):
     apply_dark_title_bar(birthwind_fecha)
     
     try:
-        icon_path = os.path.join(core_dir, "logo.ico")
-        if os.path.exists(icon_path):
-            birthwind_fecha.iconbitmap(icon_path)
+        if os.path.exists(app_icon_path):
+            birthwind_fecha.iconbitmap(app_icon_path)
     except:
         pass
         
@@ -474,13 +484,12 @@ def apply_dark_title_bar(window):
 class YisukmDownloaderScript:
     def __init__(self, root):
         self.root = root
-        self.root.title("YT-DLP - v1.2.5")
+        self.root.title("YT-DLP - v1.0.0")
         self.root.geometry("640x510")
         apply_dark_title_bar(self.root)
         try:
-            icon_path = os.path.join(core_dir, "logo.ico")
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
+            if os.path.exists(app_icon_path):
+                self.root.iconbitmap(app_icon_path)
         except:
             pass
 
@@ -624,7 +633,7 @@ class YisukmDownloaderScript:
         self.update_ui_texts()
 
         timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        init_banner = f"✦  yiskm-downloader  ->  v1.2.5\n----------------------------------------\n[session] {timestamp_str}\n"
+        init_banner = f"✦  yiskm-downloader  ->  v1.0.0\n----------------------------------------\n[session] {timestamp_str}\n"
         self.log(init_banner.strip())
 
     def switch_language(self, lang):
@@ -855,14 +864,14 @@ class YisukmDownloaderScript:
 
     def check_app_updates(self):
         def run_check():
-            url_api = "https://api.github.com/repos/yisukm24/yt-dlp-downloader/releases/latest"
+            url_api = "https://api.github.com/repos/yisukm24/dlp-yisk-downloader/releases/latest"
             try:
                 req = urllib.request.Request(url_api, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
                 with urllib.request.urlopen(req, timeout=5) as response:
                     info_release = json.loads(response.read().decode('utf-8'))
                 
                 remote_version = info_release.get("tag_name", "1.0.0").lstrip('v')
-                local_version = "1.2.5" 
+                local_version = "1.0.0" 
                 
                 url_zip = ""
                 assets = info_release.get("assets", [])
