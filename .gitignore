@@ -1,0 +1,12 @@
+.env
+data/
+downloads/
+assets/bin/
+*.exe
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+.venv/
+.clinerules
