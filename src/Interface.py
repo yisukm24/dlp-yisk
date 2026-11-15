@@ -661,25 +661,29 @@ class YisukmDownloaderScript:
     def check_app_updates(self):
         def run_check():
             try:
-                has_update, remote_version, url_zip = check_latest_release()
-                if has_update and url_zip:
-                    self.root.after(0, lambda: self.prompt_app_update(remote_version, url_zip))
+                has_update, remote_version, installer_url = check_latest_release()
+                if has_update and installer_url:
+                    self.root.after(0, lambda: self.prompt_app_update(remote_version, installer_url))
             except Exception:
                 pass
 
         thread = threading.Thread(target=run_check, daemon=True)
         thread.start()
 
-    def prompt_app_update(self, remote_version, url_zip):
+    def prompt_app_update(self, remote_version, installer_url):
         ans = messagebox.askyesno("Update Available", f"A new version ({remote_version}) is available.\nDo you want to update now?", parent=self.root)
         if ans:
             self.clear_log()
             self.log("[+] Downloading application update package...")
 
+            def close_for_update():
+                self.root.quit()
+                self.root.destroy()
+
             def run_download():
                 try:
-                    download_and_run_updater(url_zip)
-                    self.root.after(0, self.root.quit)
+                    download_and_run_updater(installer_url)
+                    self.root.after(0, close_for_update)
                 except Exception as e:
                     self.root.after(0, lambda err=str(e): self.log(f"[!] Update failed: {err}"))
 
@@ -690,6 +694,6 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = YisukmDownloaderScript(root)
     apply_dark_title_bar(root)
-   # root.after(1500, app.check_app_updates)
+    root.after(1500, app.check_app_updates)
     root.after(100, lambda: load_app_config(root, app))
     root.mainloop()
