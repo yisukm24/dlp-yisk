@@ -1,70 +1,27 @@
-import sys
 import os
-import re
 import threading
-import subprocess
 import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
-import json
-import random   
-import urllib.request
-from urllib.parse import urlparse
-import shutil
 import multiprocessing
 
-IS_FROZEN = getattr(sys, 'frozen', False)
-
-if IS_FROZEN:
-    app_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(sys.executable)))
-    script_root = os.path.dirname(os.path.abspath(sys.executable))
-    bin_dir = os.path.join(app_dir, "bin")
-    app_icon_path = os.path.join(app_dir, "logo.ico")
-    
-    local_app_data = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    user_data_dir = os.path.join(local_app_data, "dlp_yisk")
-    persistent_core = os.path.join(user_data_dir, "data")
-    downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads", "dlp_yisk")
-else:
-    src_dir = os.path.dirname(os.path.abspath(__file__))
-    script_root = os.path.dirname(src_dir)
-    app_dir = os.path.join(script_root, "assets")
-    bin_dir = os.path.join(app_dir, "bin")
-    app_icon_path = os.path.join(app_dir, "logo.ico")
-    
-    persistent_core = os.path.join(script_root, "data")
-    downloads_dir = os.path.join(script_root, "downloads")
-
-core_dir = app_dir
-
-videos_dir = os.path.join(downloads_dir, "videos")
-audios_dir = os.path.join(downloads_dir, "audios")
-playlists_dir = os.path.join(downloads_dir, "playlists")
-
-os.makedirs(persistent_core, exist_ok=True)
-for d in [downloads_dir, videos_dir, audios_dir, playlists_dir]:
-    os.makedirs(d, exist_ok=True)
-
-identity_args = [
-    "--referer", "https://google.com",
-    "--impersonate", "chrome:windows",
-    "--sleep-requests", "0.5",
-    "--socket-timeout", "10",
-    "--retries", "10",
-    "--fragment-retries", "10",
-    "--add-header", "DNT:1",
-    "--add-header", "Sec-Fetch-Mode:navigate",
-    "--ignore-config",
-    "--no-cookies",
-    "--ffmpeg-location", bin_dir
-]
-
-download_args = identity_args + [
-    "--concurrent-fragments", "10",
-    "--part",
-    "--clean-info-json",
-    "--no-mtime"
-]
+from paths import (
+    app_icon_path,
+    config_file_path,
+    script_root,
+)
+from config import load_config, save_config, update_config_value
+from audio import sound_alert, check_and_play_event_melody
+from downloader import (
+    build_ytdlp_command,
+    run_download_subprocess,
+    get_target_dir_for_option,
+)
+from updater import (
+    update_ytdlp_binary as run_ytdlp_updater,
+    check_latest_release,
+    download_and_run_updater,
+)
 
 LANGUAGES = {
     "EN": {
@@ -213,74 +170,7 @@ LANGUAGES = {
     }
 }
 
-def sound_alert():
-    try:
-        import winsound
-        check_sound = [
-            (1046, 50),
-            (1318, 50),
-            (1568, 50),
-            (2093, 120)
-        ]
-        for freq, duration in check_sound:
-            winsound.Beep(freq, duration)
-    except:
-        pass
-
-def christmas_melody():
-    try:
-        import winsound
-        import random
-        
-        jingle_bells = [
-            (659, 300), (661, 300), (659, 600), (661, 300), (659, 300), (661, 600),
-            (659, 300), (784, 300), (523, 450), (587, 150), (659, 1200),
-            (698, 300), (700, 300), (698, 450), (700, 150), (698, 300), (659, 300), (661, 300), (659, 150), (661, 150),
-            (784, 300), (786, 300), (698, 300), (587, 300), (523, 1200)
-        ]
-        
-        we_wish_you = [
-            (523, 550), (698, 550), (700, 280), (784, 280), (698, 280), (659, 280),
-            (587, 550), (589, 550), (587, 550), (784, 550), (786, 280), (880, 280),
-            (784, 280), (698, 280), (659, 550), (523, 550), (525, 550), (880, 550),
-            (882, 280), (932, 280), (880, 280), (784, 280), (698, 550), (587, 550),
-            (523, 280), (525, 280), (587, 550), (784, 550), (659, 550), (698, 1100)
-        ]
-        
-        noche_de_paz = [
-            (784, 950), (880, 320), (784, 650), (659, 1400),
-            (784, 950), (880, 320), (784, 650), (659, 1400),
-            (1174, 650), (1176, 650), (987, 1400),
-            (1046, 650), (1048, 650), (784, 1400),
-            (880, 650), (882, 650), (1046, 950), (987, 320), (880, 650),
-            (784, 950), (880, 320), (784, 650), (659, 1400),
-            (784, 650), (786, 650), (1174, 950), (987, 320), (1046, 650),
-            (1318, 1400), (1046, 650), (784, 650), (587, 650), (523, 1800)
-        ]
-        
-        christmas_mdy = [jingle_bells, we_wish_you, noche_de_paz]
-        choosen_chrmdy = random.choice(christmas_mdy)
-        
-        for freq, duration in choosen_chrmdy:
-            winsound.Beep(freq, duration)
-    except:
-        pass
-
-def birthday_melody():
-    try:
-        import winsound
-        notes = [
-            (262, 280), (263, 280), (294, 500), (262, 500), (349, 500), (330, 900),
-            (262, 280), (263, 280), (294, 500), (262, 500), (392, 500), (349, 900),
-            (262, 280), (263, 280), (523, 500), (440, 500), (349, 500), (330, 500), (294, 500),
-            (466, 280), (467, 280), (440, 500), (349, 500), (392, 500), (349, 1000)
-        ]
-        for freq, duration in notes:
-            winsound.Beep(freq, int(duration * 1.25))
-    except:
-        pass
-
-def your_language(root, config_path, on_lang_selected_callback):
+def your_language(root, on_lang_selected_callback):
     window_lang = tk.Toplevel(root)
     window_lang.title("Language / Idioma / 언어")
     window_lang.geometry("420x150")
@@ -315,14 +205,12 @@ def your_language(root, config_path, on_lang_selected_callback):
 
     def set_language(lang):
         data = {"idioma": lang, "bth_day": "", "bth_month": "", "topmost": False}
-        try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+        if save_config(data):
             window_lang.grab_release()
             window_lang.destroy()
             on_lang_selected_callback(lang)
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not save language: {e}")
+        else:
+            messagebox.showerror("Error", "Could not save language")
 
     btn_en = tk.Button(frame_btns, text="English (EN)", bg="#8a1a1a", fg="#ffffff", 
                        activebackground="#a32424", activeforeground="#ffffff", 
@@ -342,7 +230,7 @@ def your_language(root, config_path, on_lang_selected_callback):
                        command=lambda: set_language("KO"))
     btn_ko.pack(side="left", padx=8, ipady=5)
 
-def birthdate_(root, actual_language, config_path, on_save_callback):
+def birthdate_(root, actual_language, on_save_callback):
     data = LANGUAGES[actual_language]
     
     birthwind_fecha = tk.Toplevel(root)
@@ -400,48 +288,32 @@ def birthdate_(root, actual_language, config_path, on_save_callback):
         indexed_month = months_list.index(month_selected) + 1
         numeric_month = str(indexed_month).zfill(2)
         
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            
-            data["bth_day"] = combo_day.get()
-            data["bth_month"] = numeric_month
-            
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
-                
+        cfg_data = load_config()
+        cfg_data["bth_day"] = combo_day.get()
+        cfg_data["bth_month"] = numeric_month
+        
+        if save_config(cfg_data):
             birthwind_fecha.grab_release()
             birthwind_fecha.destroy()
             threading.Thread(target=on_save_callback, daemon=True).start()
-        except Exception as e:
-            messagebox.showerror("Error", f"{data['config_err']}{e}")
+        else:
+            messagebox.showerror("Error", f"{data['config_err']}save failed")
 
     btn_safe = tk.Button(birthwind_fecha, text=data["config_btn"], bg="#8a1a1a", fg="#ffffff", 
          activebackground="#a32424", activeforeground="#ffffff", 
           font=('Segoe UI Semibold', 9), bd=0, cursor="hand2", width=12, command=date_b_)
     btn_safe.pack(pady=15)
 
-def easter_egg_music_(birth_d, birth_m):
-    now = datetime.datetime.now()
-    if now.day == birth_d and now.month == birth_m:
-        birthday_melody()
-    elif now.month == 12:
-        christmas_melody()
-
 def load_app_config(root, app):
-    config_path = os.path.join(persistent_core, "config.json")
-    
-    if not os.path.exists(config_path):
-        your_language(root, config_path, lambda lang: (
+    if not os.path.exists(config_file_path):
+        your_language(root, lambda lang: (
             app.switch_language(lang),
-            birthdate_(root, lang, config_path, lambda: load_app_config(root, app))
+            birthdate_(root, lang, lambda: load_app_config(root, app))
         ))
         return
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            
+        data = load_config()
         saved_language = data.get("idioma", "EN")
         saved_topmost = data.get("topmost", False)
         
@@ -452,12 +324,12 @@ def load_app_config(root, app):
         month_txt = data.get("bth_month", "")
         
         if not day_txt or not month_txt:
-            birthdate_(root, saved_language, config_path, lambda: load_app_config(root, app))
+            birthdate_(root, saved_language, lambda: load_app_config(root, app))
             return
             
         birth_d = int(day_txt)
         birth_m = int(month_txt)
-       # threading.Thread(target=easter_egg_music_, args=(birth_d, birth_m), daemon=True).start()
+        threading.Thread(target=check_and_play_event_melody, args=(birth_d, birth_m), daemon=True).start()
     except Exception:
         pass
 
@@ -638,16 +510,8 @@ class YisukmDownloaderScript:
 
     def switch_language(self, lang):
         self.current_lang = lang
-        config_path = os.path.join(persistent_core, "config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                data["idioma"] = lang
-                with open(config_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=4)
-            except:
-                pass
+        if os.path.exists(config_file_path):
+            update_config_value("idioma", lang)
 
         for btn, l_code in [(self.btn_lang_en, "EN"), (self.btn_lang_es, "ES"), (self.btn_lang_ko, "KO")]:
             if l_code == lang:
@@ -667,16 +531,8 @@ class YisukmDownloaderScript:
 
     def toggle_topmost(self):
         self.set_topmost(not self.is_topmost)
-        config_path = os.path.join(persistent_core, "config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                data["topmost"] = self.is_topmost
-                with open(config_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=4)
-            except:
-                pass
+        if os.path.exists(config_file_path):
+            update_config_value("topmost", self.is_topmost)
 
     def update_ui_texts(self):
         data = LANGUAGES[self.current_lang]
@@ -750,70 +606,30 @@ class YisukmDownloaderScript:
 
     def execute_ytdlp(self, url):
         idx = self.combo_options.current()
-        selected_option = self.combo_options.get()
         data = LANGUAGES[self.current_lang]
-        
-        base_cmd = [os.path.join(bin_dir, "yt-dlp.exe")]
         self.log(data["logs"][idx])
-        
-        playlist_target = os.path.join(playlists_dir, "%(playlist)s")
-        playlist_output = "%(playlist_index)s - %(title)s.%(ext)s"
-        
-        download_profiles = {
-            "Quality Video (MKV)": download_args + ["-P", videos_dir, "-o", "%(title)s.%(ext)s", "-f", "bestvideo+bestaudio/best", "--merge-output-format", "mkv", "--embed-thumbnail", "--postprocessor-args", "merger+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Quality Video (MP4)": download_args + ["-P", videos_dir, "-o", "%(title)s.%(ext)s", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", "--merge-output-format", "mp4", "--embed-thumbnail", "--postprocessor-args", "merger+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Quality Audio (MP3)": download_args + ["-P", audios_dir, "-o", "%(title)s.%(ext)s", "-f", "ba", "-x", "--audio-format", "mp3", "--audio-quality", "0", "--embed-thumbnail", "--postprocessor-args", "EmbedThumbnail+ffmpeg_o:-c:v mjpeg -pix_fmt yuvj420p", "--postprocessor-args", "ExtractAudio+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Quality Audio (FLAC)": download_args + ["-P", audios_dir, "-o", "%(title)s.%(ext)s", "-f", "ba", "-x", "--audio-format", "flac", "--audio-quality", "0", "--embed-thumbnail", "--postprocessor-args", "ExtractAudio+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Download Video Playlist (MKV)": download_args + ["-P", playlist_target, "-o", playlist_output, "-f", "bestvideo+bestaudio/best", "--merge-output-format", "mkv", "--embed-thumbnail", "--postprocessor-args", "merger+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Download Video Playlist (MP4)": download_args + ["-P", playlist_target, "-o", playlist_output, "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", "--merge-output-format", "mp4", "--embed-thumbnail", "--postprocessor-args", "merger+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Download Audio Playlist (MP3)": download_args + ["-P", playlist_target, "-o", playlist_output, "-f", "ba", "-x", "--audio-format", "mp3", "--audio-quality", "0", "--embed-thumbnail", "--postprocessor-args", "EmbedThumbnail+ffmpeg_o:-c:v mjpeg -pix_fmt yuvj420p", "--postprocessor-args", "ExtractAudio+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "Download Audio Playlist (FLAC)": download_args + ["-P", playlist_target, "-o", playlist_output, "-f", "ba", "-x", "--audio-format", "flac", "--audio-quality", "0", "--embed-thumbnail", "--postprocessor-args", "ExtractAudio+ffmpeg_o:-threads 0 -map_metadata -1 -map_metadata:s:v 0"],
-            "View Available Source Formats (-F)": identity_args + ["-F"]
-        }
-        
-        specific_args = download_profiles.get(selected_option, identity_args + ["-F"])
-        cmd = base_cmd + specific_args + ["--", url]
+
+        cmd = build_ytdlp_command(idx, url)
 
         try:
             self.root.after(0, lambda: self.progress_bar.configure(value=0))
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, startupinfo=startupinfo, errors='replace')
-            
-            speed_pattern = r'at\s+([0-9.]+[kMG]b/s)'
-            percentage_pattern = r'\[download\]\s+([0-9.]+)%'
-            
-            while True:
-                line = process.stdout.readline()
-                if not line and process.poll() is not None:
-                    break
-                if line:
-                    text_linea = line.strip()
-                    text_linea = ''.join(c for c in text_linea if c.isprintable() or c in '\n\r\t')
-                    
-                    match_v = re.search(speed_pattern, text_linea)
-                    if match_v:
-                        velocidad = match_v.group(1)
-                        self.root.after(0, lambda v=velocidad: self.root.title(f"YT-DLP [Speed: {v}]"))
-                        
-                    match_p = re.search(percentage_pattern, text_linea)
-                    if match_p:
-                        percentage = float(match_p.group(1))
-                        self.root.after(0, lambda p=percentage: self.progress_bar.configure(value=p))
-                        
-                    self.root.after(0, lambda t=text_linea: self.log(t))
+            returncode = run_download_subprocess(
+                cmd,
+                log_callback=lambda t: self.root.after(0, lambda msg=t: self.log(msg)),
+                speed_callback=lambda v: self.root.after(0, lambda spd=v: self.root.title(f"YT-DLP [Speed: {spd}]")),
+                progress_callback=lambda p: self.root.after(0, lambda pct=p: self.progress_bar.configure(value=pct)),
+            )
 
-            process.wait()
             self.root.after(0, lambda: self.root.title("YT-DLP"))
-            if process.returncode == 0:
+            if returncode == 0:
                 self.root.after(0, lambda: self.progress_bar.configure(value=100))
                 self.log(data["msg_success"])
                 sound_alert()
             else:
-                self.log(f"{data['msg_warn']}{process.returncode}")
+                self.log(f"{data['msg_warn']}{returncode}")
         except Exception as e:
             self.log(f"{data['msg_crit']}{str(e)}")
-        self.root.after(0, self.reset_button)  
+        self.root.after(0, self.reset_button)
 
     def reset_button(self):
         data = LANGUAGES[self.current_lang]
@@ -821,70 +637,37 @@ class YisukmDownloaderScript:
 
     def open_downloads_folder(self):
         idx = self.combo_options.current()
-        target_dir = downloads_dir
-        if idx == 0 or idx == 1:
-            target_dir = videos_dir
-        elif idx == 2 or idx == 3:
-            target_dir = audios_dir
-        elif idx == 4 or idx == 5:
-            target_dir = playlists_dir
-            
-        if os.path.exists(target_dir):
-            os.startfile(target_dir)
-        else:
-            os.makedirs(target_dir, exist_ok=True)
-            os.startfile(target_dir)  
+        target_dir = get_target_dir_for_option(idx)
+        os.makedirs(target_dir, exist_ok=True)
+        os.startfile(target_dir)
 
     def update_ytdlp_binary(self):
         def run_update():
             data = LANGUAGES[self.current_lang]
             self.root.after(0, self.clear_log)
             self.root.after(0, lambda: self.log(data["msg_update"]))
-            binary_path = os.path.join(bin_dir, "yt-dlp.exe")
-            cmd = [binary_path, "-U"]
             try:
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, startupinfo=startupinfo, errors='replace', shell=False)
-                while True:
-                    line = process.stdout.readline()
-                    if not line and process.poll() is not None:
-                        break
-                    if line:
-                        self.log(line.strip())
-                process.wait()
-                if process.returncode == 0:
+                returncode = run_ytdlp_updater(
+                    log_callback=lambda msg: self.root.after(0, lambda m=msg: self.log(m))
+                )
+                if returncode == 0:
                     sound_alert()
             except Exception as e:
                 self.log(f"{data['err_update']}{str(e)}")
-        
-        thread = threading.Thread(target=run_update)
-        thread.daemon = True
+
+        thread = threading.Thread(target=run_update, daemon=True)
         thread.start()
 
     def check_app_updates(self):
         def run_check():
-            url_api = "https://api.github.com/repos/yisukm24/dlp-yisk-downloader/releases/latest"
             try:
-                req = urllib.request.Request(url_api, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    info_release = json.loads(response.read().decode('utf-8'))
-                
-                remote_version = info_release.get("tag_name", "1.0.0").lstrip('v')
-                local_version = "1.0.0" 
-                
-                url_zip = ""
-                assets = info_release.get("assets", [])
-                if assets and isinstance(assets, list) and len(assets) > 0:
-                    url_zip = assets[0].get("browser_download_url", "")
-
-                if remote_version > local_version and url_zip:
+                has_update, remote_version, url_zip = check_latest_release()
+                if has_update and url_zip:
                     self.root.after(0, lambda: self.prompt_app_update(remote_version, url_zip))
             except Exception:
                 pass
-        
-        thread = threading.Thread(target=run_check)
-        thread.daemon = True
+
+        thread = threading.Thread(target=run_check, daemon=True)
         thread.start()
 
     def prompt_app_update(self, remote_version, url_zip):
@@ -892,39 +675,14 @@ class YisukmDownloaderScript:
         if ans:
             self.clear_log()
             self.log("[+] Downloading application update package...")
-            
+
             def run_download():
                 try:
-                    temp_zip = os.path.join(script_root, "update_temp.zip")
-                    req_zip = urllib.request.Request(url_zip, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                    with urllib.request.urlopen(req_zip, timeout=15) as response, open(temp_zip, 'wb') as out_file:
-                        while True:
-                            chunk = response.read(1024 * 1024)
-                            if not chunk:
-                                break
-                            out_file.write(chunk)
-                    bat_path = os.path.join(script_root, "updater.bat")
-                    exe_name = "dlp_yisk.exe"
-                    temp_extract_dir = os.path.join(script_root, "update_extracted_temp")
-                    
-                    script_bat = f"""@echo off
-timeout /t 2 /nobreak > nul
-if exist "{temp_extract_dir}" rmdir /s /q "{temp_extract_dir}"
-powershell -Command "Start-Process powershell -ArgumentList '-Command Expand-Archive -Path \\"'{temp_zip}'\\" -DestinationPath \\"'{temp_extract_dir}'\\" -Force' -Verb RunAs -Wait"
-powershell -Command "Start-Process powershell -ArgumentList '-Command Copy-Item -Path \\"'{temp_extract_dir}'\\\\*\\" -Destination \\"'{script_root}'\\" -Recurse -Force' -Verb RunAs -Wait"
-if exist "{temp_extract_dir}" rmdir /s /q "{temp_extract_dir}"
-if exist "{temp_zip}" del /f /q "{temp_zip}"
-cd /d "{script_root}"
-start "" "{exe_name}"
-del "%~f0"
-"""
-                    with open(bat_path, "w", encoding="utf-8") as bat_file:
-                        bat_file.write(script_bat)
-                    subprocess.Popen([bat_path], shell=True)
-                    self.root.quit()
+                    download_and_run_updater(url_zip)
+                    self.root.after(0, self.root.quit)
                 except Exception as e:
-                    self.root.after(0, lambda: self.log(f"[!] Update failed: {str(e)}"))
-            
+                    self.root.after(0, lambda err=str(e): self.log(f"[!] Update failed: {err}"))
+
             threading.Thread(target=run_download, daemon=True).start()
 
 if __name__ == "__main__":
@@ -935,4 +693,3 @@ if __name__ == "__main__":
    # root.after(1500, app.check_app_updates)
     root.after(100, lambda: load_app_config(root, app))
     root.mainloop()
-    
