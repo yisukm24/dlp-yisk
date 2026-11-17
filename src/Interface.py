@@ -1,14 +1,33 @@
 import os
-import threading
+import sys
 import datetime
-import tkinter as tk
-from tkinter import ttk, messagebox
 import multiprocessing
+
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QPointF, QSize
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QPolygonF
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QComboBox,
+    QProgressBar,
+    QPlainTextEdit,
+    QMessageBox,
+    QDialog,
+    QFrame,
+    QListView,
+    QStyle,
+    QStyleOptionComboBox,
+)
 
 from paths import (
     app_icon_path,
     config_file_path,
-    script_root,
 )
 from config import load_config, save_config, update_config_value
 from audio import sound_alert, check_and_play_event_melody
@@ -18,6 +37,7 @@ from downloader import (
     get_target_dir_for_option,
 )
 from updater import (
+    LOCAL_VERSION,
     update_ytdlp_binary as run_ytdlp_updater,
     check_latest_release,
     download_and_run_updater,
@@ -25,13 +45,14 @@ from updater import (
 
 LANGUAGES = {
     "EN": {
-        "title": "YT-DLP DOWNLOADER",
+        "title": "DLP-YISK DOWNLOADER",
         "subtitle": "Developed for yisukm",
         "url_label": "Content URL",
         "action_label": "Action Type",
         "console_label": "Console Output",
         "btn_run": "Download",
-        "btn_downloading": "DOWNLOADING CONTENT...",
+        "btn_downloading": "DOWNLOADING...",
+        "btn_folder": "OPEN DOWNLOADS",
         "err_valid": "Please enter a valid link.",
         "err_chars": "Dangerous or invalid characters detected in URL.",
         "err_format": "Please select an Action Type before downloading.",
@@ -42,7 +63,10 @@ LANGUAGES = {
         "config_month": "Month:",
         "config_btn": "Save",
         "config_err": "Could not save configuration: ",
-        "months_list": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+        "months_list": [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        ],
         "msg_success": "\n[✓] Completed successfully!",
         "msg_warn": "\n[!] Finished with warning code: ",
         "msg_crit": "\n[!] Critical system error: ",
@@ -55,7 +79,7 @@ LANGUAGES = {
             "Download Video Playlist (MP4)",
             "Download Audio Playlist (MP3)",
             "Download Audio Playlist (FLAC)",
-            "View Available Source Formats (-F)"
+            "View Available Source Formats (-F)",
         ],
         "logs": [
             "[+] Downloading mkv video...",
@@ -66,20 +90,26 @@ LANGUAGES = {
             "[+] Processing MP4 video playlist...",
             "[+] Processing MP3 audio playlist...",
             "[+] Processing FLAC audio playlist...",
-            "[+] Analyzing source formats..."
+            "[+] Analyzing source formats...",
         ],
-        "msg_update": "[+] Checking for application updates...",
+        "msg_update": "[+] Checking for yt-dlp updates...",
         "err_update": "\n[!] Update error: ",
-        "placeholder": "Enter the content link here..."
+        "placeholder": "Enter the content link here...",
+        "action_placeholder": "Select an action...",
+        "app_update_title": "Update Available",
+        "app_update_prompt": "A new version ({version}) is available.\nDo you want to update now?",
+        "app_update_downloading": "[+] Downloading application update package...",
+        "app_update_failed": "[!] Update failed: ",
     },
     "ES": {
-        "title": "YT-DLP DOWNLOADER",
+        "title": "DLP-YISK DOWNLOADER",
         "subtitle": "Desarrollado por yisukm",
         "url_label": "URL del Contenido",
         "action_label": "Tipo de Acción",
         "console_label": "Salida de Consola",
         "btn_run": "Descargar",
-        "btn_downloading": "DESCARGANDO CONTENIDO...",
+        "btn_downloading": "DESCARGANDO...",
+        "btn_folder": "ABRIR DESCARGAS",
         "err_valid": "Por favor introduce un enlace válido.",
         "err_length": "La URL supera el tamaño límite seguro.",
         "err_chars": "Caracteres peligrosos/inválidos en la URL.",
@@ -90,7 +120,10 @@ LANGUAGES = {
         "config_month": "Mes:",
         "config_btn": "Guardar",
         "config_err": "No se pudo guardar la configuración: ",
-        "months_list": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        "months_list": [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+        ],
         "msg_success": "\n[✓] ¡Completado exitosamente!",
         "msg_warn": "\n[!] Finalizó con código de advertencia: ",
         "msg_crit": "\n[!] Error crítico del sistema: ",
@@ -103,7 +136,7 @@ LANGUAGES = {
             "Descargar Playlist - Video (MP4)",
             "Descargar Playlist - Audio (MP3)",
             "Descargar Playlist - Audio (FLAC)",
-            "Ver Formatos Disponibles (-F)"
+            "Ver Formatos Disponibles (-F)",
         ],
         "logs": [
             "[+] Descargando mkv video...",
@@ -114,20 +147,26 @@ LANGUAGES = {
             "[+] Procesando Playlist de videos MP4...",
             "[+] Procesando Playlist de audios MP3...",
             "[+] Procesando Playlist de audios FLAC...",
-            "[+] Analizando formatos de origen..."
+            "[+] Analizando formatos de origen...",
         ],
-        "msg_update": "[+] Comprobando actualizaciones de la aplicación...",
+        "msg_update": "[+] Comprobando actualizaciones de yt-dlp...",
         "err_update": "\n[!] Error al intentar actualizar: ",
-        "placeholder": "Introduce el enlace del contenido aquí..."
+        "placeholder": "Introduce el enlace del contenido aquí...",
+        "action_placeholder": "Selecciona una acción...",
+        "app_update_title": "Actualización Disponible",
+        "app_update_prompt": "Hay una nueva versión ({version}) disponible.\n¿Deseas actualizar ahora?",
+        "app_update_downloading": "[+] Descargando paquete de actualización...",
+        "app_update_failed": "[!] Error de actualización: ",
     },
     "KO": {
-        "title": "YT-DLP 다운로더",
+        "title": "DLP-YISK 다운로더",
         "subtitle": "yisukm 제작",
         "url_label": "콘텐츠 URL",
         "action_label": "작업 유형",
         "console_label": "콘솔 출력",
         "btn_run": "다운로드",
-        "btn_downloading": "콘텐츠 다운로드 중...",
+        "btn_downloading": "다운로드 중...",
+        "btn_folder": "다운로드 폴더 열기",
         "err_valid": "올바른 링크를 입력해 주세요.",
         "err_length": "URL이 안전 제한 길이를 초과했습니다.",
         "err_chars": "URL에서 위험하거나 잘못된 문자가 감지되었습니다.",
@@ -138,7 +177,10 @@ LANGUAGES = {
         "config_month": "월:",
         "config_btn": "저장",
         "config_err": "설정을 저장할 수 없습니다: ",
-        "months_list": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+        "months_list": [
+            "1월", "2월", "3월", "4월", "5월", "6월",
+            "7월", "8월", "9월", "10월", "11월", "12월",
+        ],
         "msg_success": "\n[✓] 성공적으로 완료되었습니다!",
         "msg_warn": "\n[!] 경고 코드와 함께 종료됨: ",
         "msg_crit": "\n[!] 심각한 시스템 오류: ",
@@ -151,7 +193,7 @@ LANGUAGES = {
             "재생목록 비디오 다운로드 (MP4)",
             "재생목록 오디오 다운로드 (MP3)",
             "재생목록 오디오 다운로드 (FLAC)",
-            "사용 가능한 소스 형식 보기 (-F)"
+            "사용 가능한 소스 형식 보기 (-F)",
         ],
         "logs": [
             "[+] MKV 비디오 다운로드 중...",
@@ -162,372 +204,858 @@ LANGUAGES = {
             "[+] MP4 비디오 재생목록 처리 중...",
             "[+] MP3 오디오 재생목록 처리 중...",
             "[+] FLAC 오디오 재생목록 처리 중...",
-            "[+] 소스 형식 분석 중..."
+            "[+] 소스 형식 분석 중...",
         ],
-        "msg_update": "[+] 재생목록 업데이트 확인 중...",
+        "msg_update": "[+] yt-dlp 업데이트 확인 중...",
         "err_update": "\n[!] 업데이트 오류: ",
-        "placeholder": "여기에 콘텐츠 링크를 입력하세요..."
-    }
+        "placeholder": "여기에 콘텐츠 링크를 입력하세요...",
+        "action_placeholder": "작업 선택...",
+        "app_update_title": "업데이트 가능",
+        "app_update_prompt": "새 버전({version})이 있습니다.\n지금 업데이트하시겠습니까?",
+        "app_update_downloading": "[+] 업데이트 패키지를 다운로드하는 중...",
+        "app_update_failed": "[!] 업데이트 실패: ",
+    },
 }
 
-def your_language(root, on_lang_selected_callback):
-    window_lang = tk.Toplevel(root)
-    window_lang.title("Language / Idioma / 언어")
-    window_lang.geometry("420x150")
-    
-    apply_dark_title_bar(window_lang)
-    
-    try:
-        if os.path.exists(app_icon_path):
-            window_lang.iconbitmap(app_icon_path)
-    except:
-        pass
-        
-    window_lang.configure(bg="#0b0c0d")
-    window_lang.resizable(False, False)
-    window_lang.attributes('-topmost', True) 
 
-    window_lang.transient(root)
-    window_lang.grab_set()
-    window_lang.protocol("WM_DELETE_WINDOW", lambda: None)
+DARK_QSS = """
+QMainWindow, QDialog {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: "Segoe UI", sans-serif;
+}
 
-    root.update_idletasks()
-    x = root.winfo_x() + (root.winfo_width() // 2) - 210
-    y = root.winfo_y() + (root.winfo_height() // 2) - 75
-    window_lang.geometry(f"+{x}+{y}")
+QWidget {
+    color: #ffffff;
+    font-family: "Segoe UI", sans-serif;
+}
 
-    lbl_info = tk.Label(window_lang, text="Select your language / Selecciona tu idioma / 언어를 선택하세요:", 
-                        bg="#0b0c0d", fg="#ffffff", font=('Segoe UI', 10, 'bold'), justify="center")
-    lbl_info.pack(pady=(20, 15))
+QLabel#TitleLabel {
+    color: #b91c1c;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
 
-    frame_btns = tk.Frame(window_lang, bg="#0b0c0d")
-    frame_btns.pack(pady=5)
+QLabel#SubtitleLabel {
+    color: #525252;
+    font-size: 11px;
+    font-style: italic;
+}
 
-    def set_language(lang):
-        data = {"idioma": lang, "bth_day": "", "bth_month": "", "topmost": False}
-        if save_config(data):
-            window_lang.grab_release()
-            window_lang.destroy()
-            on_lang_selected_callback(lang)
-        else:
-            messagebox.showerror("Error", "Could not save language")
+QLabel#SectionLabel {
+    color: #a3a3a3;
+    font-size: 12px;
+    font-weight: 600;
+}
 
-    btn_en = tk.Button(frame_btns, text="English (EN)", bg="#8a1a1a", fg="#ffffff", 
-                       activebackground="#a32424", activeforeground="#ffffff", 
-                       font=('Segoe UI Semibold', 9), bd=0, cursor="hand2", width=12,
-                       command=lambda: set_language("EN"))
-    btn_en.pack(side="left", padx=8, ipady=5)
+QLabel#DialogLabel {
+    color: #e5e5e5;
+    font-size: 12px;
+    font-weight: 600;
+}
 
-    btn_es = tk.Button(frame_btns, text="Español (ES)", bg="#8a1a1a", fg="#ffffff", 
-                       activebackground="#a32424", activeforeground="#ffffff", 
-                       font=('Segoe UI Semibold', 9), bd=0, cursor="hand2", width=12,
-                       command=lambda: set_language("ES"))
-    btn_es.pack(side="left", padx=8, ipady=5)
+QLabel#FieldLabel {
+    color: #a3a3a3;
+    font-size: 12px;
+}
 
-    btn_ko = tk.Button(frame_btns, text="한국어 (KO)", bg="#8a1a1a", fg="#ffffff", 
-                       activebackground="#a32424", activeforeground="#ffffff", 
-                       font=('Segoe UI Semibold', 9), bd=0, cursor="hand2", width=12,
-                       command=lambda: set_language("KO"))
-    btn_ko.pack(side="left", padx=8, ipady=5)
+QFrame#Divider {
+    background-color: #1a1a1a;
+    max-height: 1px;
+    min-height: 1px;
+}
 
-def birthdate_(root, actual_language, on_save_callback):
-    data = LANGUAGES[actual_language]
-    
-    birthwind_fecha = tk.Toplevel(root)
-    birthwind_fecha.title(data["config_title"])
-    birthwind_fecha.geometry("320x180")
-    
-    apply_dark_title_bar(birthwind_fecha)
-    
-    try:
-        if os.path.exists(app_icon_path):
-            birthwind_fecha.iconbitmap(app_icon_path)
-    except:
-        pass
-        
-    birthwind_fecha.configure(bg="#0b0c0d")
-    birthwind_fecha.resizable(False, False)
-    birthwind_fecha.attributes('-topmost', True)
-    
-    birthwind_fecha.transient(root)
-    birthwind_fecha.grab_set()
-    birthwind_fecha.protocol("WM_DELETE_WINDOW", lambda: None)
+QLineEdit {
+    background-color: #0a0a0a;
+    color: #ffffff;
+    border: 1px solid #1f1f1f;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-family: "Consolas", monospace;
+    font-size: 13px;
+    selection-background-color: #8a1a1a;
+}
 
-    root.update_idletasks()
-    x = root.winfo_x() + (root.winfo_width() // 2) - 160
-    y = root.winfo_y() + (root.winfo_height() // 2) - 90
-    birthwind_fecha.geometry(f"+{x}+{y}")
+QLineEdit:focus {
+    border: 1px solid #8a1a1a;
+}
 
-    lbl_info = tk.Label(birthwind_fecha, text=data["config_info"], 
-                        bg="#0b0c0d", fg="#ffffff", font=('Segoe UI', 9, 'bold'), justify="center")
-    lbl_info.pack(pady=(15, 10))
+QPushButton {
+    background-color: #121212;
+    color: #d4d4d4;
+    border: 1px solid #242424;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
 
-    frame_inputs = tk.Frame(birthwind_fecha, bg="#0b0c0d")
-    frame_inputs.pack(pady=5)
+QPushButton:hover {
+    background-color: #1a1a1a;
+    border-color: #2e2e2e;
+}
 
-    tk.Label(frame_inputs, text=data["config_day"], bg="#0b0c0d", fg="#a0a5aa", font=('Segoe UI', 9)).grid(row=0, column=0, padx=5)
-    
-    combo_border_day = tk.Frame(frame_inputs, bg="#3a3d40", bd=1)
-    combo_border_day.grid(row=0, column=1, padx=5)
-    combo_day = ttk.Combobox(combo_border_day, values=[str(i).zfill(2) for i in range(1, 32)], width=5, state="readonly", style='Custom.TCombobox')
-    combo_day.pack()
-    combo_day.current(0)
+QPushButton:pressed {
+    background-color: #0a0a0a;
+}
 
-    tk.Label(frame_inputs, text=data["config_month"], bg="#0b0c0d", fg="#a0a5aa", font=('Segoe UI', 9)).grid(row=0, column=2, padx=5)
-    
-    combo_border_month = tk.Frame(frame_inputs, bg="#3a3d40", bd=1)
-    combo_border_month.grid(row=0, column=3, padx=5)
-    
-    months_list = data["months_list"]
-    combo_month = ttk.Combobox(combo_border_month, values=months_list, width=12, state="readonly", style='Custom.TCombobox')
-    combo_month.pack()
-    combo_month.current(0)
+QPushButton#LangButton {
+    background-color: #121212;
+    color: #a3a3a3;
+    border: 1px solid #242424;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 0px;
+}
 
-    def date_b_():
-        month_selected = combo_month.get()
-        indexed_month = months_list.index(month_selected) + 1
-        numeric_month = str(indexed_month).zfill(2)
-        
-        cfg_data = load_config()
-        cfg_data["bth_day"] = combo_day.get()
-        cfg_data["bth_month"] = numeric_month
-        
-        if save_config(cfg_data):
-            birthwind_fecha.grab_release()
-            birthwind_fecha.destroy()
-            threading.Thread(target=on_save_callback, daemon=True).start()
-        else:
-            messagebox.showerror("Error", f"{data['config_err']}save failed")
+QPushButton#LangButton:hover {
+    background-color: #1a1a1a;
+    border-color: #2e2e2e;
+    color: #d4d4d4;
+}
 
-    btn_safe = tk.Button(birthwind_fecha, text=data["config_btn"], bg="#8a1a1a", fg="#ffffff", 
-         activebackground="#a32424", activeforeground="#ffffff", 
-          font=('Segoe UI Semibold', 9), bd=0, cursor="hand2", width=12, command=date_b_)
-    btn_safe.pack(pady=15)
+QPushButton#LangButton[active="true"] {
+    background-color: #8a1a1a;
+    border: none;
+    color: #ffffff;
+}
 
-def load_app_config(root, app):
-    if not os.path.exists(config_file_path):
-        your_language(root, lambda lang: (
-            app.switch_language(lang),
-            birthdate_(root, lang, lambda: load_app_config(root, app))
-        ))
-        return
+QPushButton#LangButton[active="true"]:hover {
+    background-color: #a32020;
+}
 
-    try:
-        data = load_config()
-        saved_language = data.get("idioma", "EN")
-        saved_topmost = data.get("topmost", False)
-        
-        app.switch_language(saved_language)
-        app.set_topmost(saved_topmost)
-        
-        day_txt = data.get("bth_day", "")
-        month_txt = data.get("bth_month", "")
-        
-        if not day_txt or not month_txt:
-            birthdate_(root, saved_language, lambda: load_app_config(root, app))
-            return
-            
-        birth_d = int(day_txt)
-        birth_m = int(month_txt)
-        threading.Thread(target=check_and_play_event_melody, args=(birth_d, birth_m), daemon=True).start()
-    except Exception:
-        pass
+QPushButton#UpdateBinButton {
+    background-color: #9a3412;
+    border: none;
+    border-radius: 2px;
+    color: #ffffff;
+    padding: 0px;
+}
 
-def apply_dark_title_bar(window):
+QPushButton#UpdateBinButton:hover {
+    background-color: #b45309;
+}
+
+QPushButton#UpdateBinButton:pressed {
+    background-color: #7c2d12;
+}
+
+QPushButton#PinButton {
+    background-color: #121212;
+    color: #a3a3a3;
+    border: 1px solid #242424;
+    border-radius: 2px;
+    padding: 0px;
+}
+
+QPushButton#PinButton:hover {
+    background-color: #1a1a1a;
+    border-color: #2e2e2e;
+}
+
+QPushButton#PinButton[active="true"] {
+    background-color: #8a1a1a;
+    border: none;
+    color: #ffffff;
+}
+
+QPushButton#PinButton[active="true"]:hover {
+    background-color: #a32020;
+}
+
+QPushButton#PrimaryButton {
+    background-color: #8a1a1a;
+    border: none;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 9px 18px;
+    border-radius: 6px;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #a32020;
+}
+
+QPushButton#PrimaryButton:pressed {
+    background-color: #6e1414;
+}
+
+QPushButton#PrimaryButton:disabled {
+    background-color: #1f1f1f;
+    color: #525252;
+}
+
+QPushButton#FolderButton {
+    background-color: #121212;
+    border: 1px solid #242424;
+    color: #d4d4d4;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 11px 16px;
+    border-radius: 6px;
+}
+
+QPushButton#FolderButton:hover {
+    background-color: #1a1a1a;
+    border-color: #2e2e2e;
+    color: #ffffff;
+}
+
+QPushButton#FolderButton:pressed {
+    background-color: #0a0a0a;
+}
+
+QComboBox {
+    background-color: #0a0a0a;
+    color: #ffffff;
+    border: 1px solid #1f1f1f;
+    border-radius: 4px;
+    padding: 7px 12px;
+    font-size: 12px;
+}
+
+QComboBox:hover {
+    border-color: #2e2e2e;
+}
+
+QComboBox[selected="true"] {
+    background-color: #0a0a0a;
+    border: 1px solid #8a1a1a;
+}
+
+QComboBox[selected="true"]:hover {
+    border-color: #a32020;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 26px;
+    border-left: 1px solid #1f1f1f;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #0a0a0a;
+    color: #ffffff;
+    border: 1px solid #1f1f1f;
+    border-radius: 4px;
+    max-height: 200px;
+    selection-background-color: #8a1a1a;
+    selection-color: #ffffff;
+    outline: 0;
+    padding: 4px;
+}
+
+QComboBox QAbstractItemView QScrollBar:vertical {
+    background: #0a0a0a;
+    width: 6px;
+    border-radius: 3px;
+}
+
+QComboBox QAbstractItemView QScrollBar::handle:vertical {
+    background: #242424;
+    min-height: 20px;
+    border-radius: 3px;
+}
+
+QComboBox QAbstractItemView QScrollBar::handle:vertical:hover {
+    background: #3a3a3a;
+}
+
+QComboBox QAbstractItemView QScrollBar::add-line:vertical,
+QComboBox QAbstractItemView QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QProgressBar {
+    background-color: #121212;
+    border: none;
+    border-radius: 3px;
+    min-height: 6px;
+    max-height: 6px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #c2410c;
+    border-radius: 3px;
+}
+
+QPlainTextEdit#ConsoleOutput {
+    background-color: #0a0a0a;
+    color: #efbd61;
+    border: 1px solid #1f1f1f;
+    border-radius: 4px;
+    padding: 8px;
+    font-family: "Consolas", monospace;
+    font-size: 12px;
+    selection-background-color: #8a1a1a;
+    selection-color: #ffffff;
+}
+
+QScrollBar:vertical {
+    background: #000000;
+    width: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #1f1f1f;
+    min-height: 24px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #2e2e2e;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+"""
+
+
+def apply_dark_title_bar(widget: QWidget) -> None:
     try:
         import ctypes
-        window.update()
-        
-        try:
-            hwnd = int(window.wm_frame(), 16)
-        except:
-            hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-            if hwnd == 0:
-                hwnd = window.winfo_id()
-        
+        hwnd = int(widget.winId())
         dark_mode = ctypes.c_int(1)
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode))
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 26, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode))
-        
-        window.update()
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 20, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode)
+        )
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 26, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode)
+        )
     except Exception:
         pass
 
-class YisukmDownloaderScript:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("YT-DLP - v1.0.0")
-        self.root.geometry("640x510")
-        apply_dark_title_bar(self.root)
+
+def create_gear_icon(color: str = "#ffffff", size: int = 14) -> QIcon:
+    dpr = 2
+    pm = QPixmap(size * dpr, size * dpr)
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    c = QColor(color)
+    center = size / 2.0
+
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QBrush(c))
+    painter.save()
+    painter.translate(center, center)
+    for _ in range(8):
+        painter.drawRoundedRect(-1.1, -6.1, 2.2, 2.4, 0.5, 0.5)
+        painter.rotate(45.0)
+    painter.restore()
+
+    painter.drawEllipse(QPointF(center, center), 4.4, 4.4)
+
+    painter.setCompositionMode(QPainter.CompositionMode_Clear)
+    painter.drawEllipse(QPointF(center, center), 1.9, 1.9)
+
+    painter.end()
+    return QIcon(pm)
+
+
+def create_pin_icon(color: str = "#a3a3a3", size: int = 14) -> QIcon:
+    dpr = 2
+    pm = QPixmap(size * dpr, size * dpr)
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    c = QColor(color)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QBrush(c))
+
+    painter.drawRoundedRect(4.5, 1.5, 5.0, 2.0, 0.6, 0.6)
+    painter.drawRect(5.6, 3.5, 2.8, 3.3)
+    collar = QPolygonF([
+        QPointF(3.2, 6.8),
+        QPointF(10.8, 6.8),
+        QPointF(11.3, 8.2),
+        QPointF(2.7, 8.2),
+    ])
+    painter.drawPolygon(collar)
+
+    pen = QPen(c, 1.5, Qt.SolidLine, Qt.RoundCap)
+    painter.setPen(pen)
+    painter.drawLine(QPointF(7.0, 8.2), QPointF(7.0, 12.6))
+
+    painter.end()
+    return QIcon(pm)
+
+
+class VectorComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setView(QListView(self))
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        arrow_rect = self.style().subControlRect(
+            QStyle.CC_ComboBox, opt, QStyle.SC_ComboBoxArrow, self
+        )
+        if not arrow_rect.isValid():
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor("#a3a3a3")))
+
+        cx = arrow_rect.center().x()
+        cy = arrow_rect.center().y()
+        half_w = 4.0
+        half_h = 2.2
+        triangle = QPolygonF([
+            QPointF(cx - half_w, cy - half_h),
+            QPointF(cx + half_w, cy - half_h),
+            QPointF(cx, cy + half_h + 0.5),
+        ])
+        painter.drawPolygon(triangle)
+        painter.end()
+
+
+class DownloadWorker(QThread):
+    progress_updated = Signal(float)
+    speed_updated = Signal(str)
+    log_received = Signal(str)
+    finished = Signal(int)
+
+    def __init__(self, cmd: list, parent=None):
+        super().__init__(parent)
+        self.cmd = cmd
+
+    def run(self):
         try:
-            if os.path.exists(app_icon_path):
-                self.root.iconbitmap(app_icon_path)
-        except:
+            returncode = run_download_subprocess(
+                self.cmd,
+                log_callback=self.log_received.emit,
+                speed_callback=self.speed_updated.emit,
+                progress_callback=self.progress_updated.emit,
+            )
+            self.finished.emit(returncode)
+        except Exception as e:
+            self.log_received.emit(f"CRITICAL_ERROR::{e}")
+            self.finished.emit(-1)
+
+
+class YtDlpUpdateWorker(QThread):
+    log_received = Signal(str)
+    update_finished = Signal(int)
+    error_occurred = Signal(str)
+
+    def run(self):
+        try:
+            returncode = run_ytdlp_updater(log_callback=self.log_received.emit)
+            self.update_finished.emit(returncode)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
+
+class AppUpdateCheckWorker(QThread):
+    update_available = Signal(str, str)
+
+    def run(self):
+        try:
+            has_update, remote_version, installer_url = check_latest_release()
+            if has_update and installer_url:
+                self.update_available.emit(remote_version, installer_url)
+        except Exception:
             pass
 
-        self.root.configure(bg="#0b0c0d")
-        self.root.resizable(False, False)
-        
+
+class AppUpdateDownloadWorker(QThread):
+    download_finished = Signal()
+    error_occurred = Signal(str)
+
+    def __init__(self, installer_url: str, parent=None):
+        super().__init__(parent)
+        self.installer_url = installer_url
+
+    def run(self):
+        try:
+            download_and_run_updater(self.installer_url)
+            self.download_finished.emit()
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
+
+class EventMelodyWorker(QThread):
+    def __init__(self, birth_d: int, birth_m: int, parent=None):
+        super().__init__(parent)
+        self.birth_d = birth_d
+        self.birth_m = birth_m
+
+    def run(self):
+        check_and_play_event_melody(self.birth_d, self.birth_m)
+
+
+class SoundAlertWorker(QThread):
+    def run(self):
+        sound_alert()
+
+
+class LanguageDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.selected_lang = "EN"
+        self._completed = False
+
+        self.setWindowTitle("Language / Idioma / 언어")
+        self.setFixedSize(430, 150)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        self.setModal(True)
+
+        if os.path.exists(app_icon_path):
+            self.setWindowIcon(QIcon(app_icon_path))
+
+        apply_dark_title_bar(self)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        lbl_info = QLabel("Select your language / Selecciona tu idioma / 언어를 선택하세요:")
+        lbl_info.setObjectName("DialogLabel")
+        lbl_info.setAlignment(Qt.AlignCenter)
+        lbl_info.setWordWrap(True)
+        layout.addWidget(lbl_info)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+
+        for label, code in [("English (EN)", "EN"), ("Español (ES)", "ES"), ("한국어 (KO)", "KO")]:
+            btn = QPushButton(label)
+            btn.setObjectName("PrimaryButton")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _=False, c=code: self._choose(c))
+            btn_row.addWidget(btn)
+
+        layout.addLayout(btn_row)
+
+    def _choose(self, lang: str):
+        data = {"idioma": lang, "bth_day": "", "bth_month": "", "topmost": False}
+        if save_config(data):
+            self.selected_lang = lang
+            self._completed = True
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Error", "Could not save language")
+
+    def closeEvent(self, event):
+        if not self._completed:
+            event.ignore()
+        else:
+            super().closeEvent(event)
+
+
+class BirthdateDialog(QDialog):
+    def __init__(self, lang: str, parent=None):
+        super().__init__(parent)
+        self.lang = lang
+        self._completed = False
+        data = LANGUAGES[lang]
+
+        self.setWindowTitle(data["config_title"])
+        self.setFixedSize(360, 180)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        self.setModal(True)
+
+        if os.path.exists(app_icon_path):
+            self.setWindowIcon(QIcon(app_icon_path))
+
+        apply_dark_title_bar(self)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
+
+        lbl_info = QLabel(data["config_info"])
+        lbl_info.setObjectName("DialogLabel")
+        lbl_info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(lbl_info)
+
+        inputs_row = QHBoxLayout()
+        inputs_row.setSpacing(8)
+
+        lbl_day = QLabel(data["config_day"])
+        lbl_day.setObjectName("FieldLabel")
+        inputs_row.addWidget(lbl_day)
+
+        self.combo_day = VectorComboBox()
+        self.combo_day.setMaxVisibleItems(10)
+        self.combo_day.addItems([str(i).zfill(2) for i in range(1, 32)])
+        self.combo_day.setFixedWidth(68)
+        inputs_row.addWidget(self.combo_day)
+
+        lbl_month = QLabel(data["config_month"])
+        lbl_month.setObjectName("FieldLabel")
+        inputs_row.addWidget(lbl_month)
+
+        self.months_list = data["months_list"]
+        self.combo_month = VectorComboBox()
+        self.combo_month.setMaxVisibleItems(10)
+        self.combo_month.addItems(self.months_list)
+        self.combo_month.setMinimumWidth(130)
+        inputs_row.addWidget(self.combo_month)
+
+        layout.addLayout(inputs_row)
+
+        btn_save = QPushButton(data["config_btn"])
+        btn_save.setObjectName("PrimaryButton")
+        btn_save.setCursor(Qt.PointingHandCursor)
+        btn_save.setFixedWidth(130)
+        btn_save.clicked.connect(self._save)
+
+        btn_container = QHBoxLayout()
+        btn_container.addStretch()
+        btn_container.addWidget(btn_save)
+        btn_container.addStretch()
+        layout.addLayout(btn_container)
+
+    def _save(self):
+        data = LANGUAGES[self.lang]
+        indexed_month = self.combo_month.currentIndex() + 1
+        numeric_month = str(indexed_month).zfill(2)
+
+        cfg_data = load_config()
+        cfg_data["bth_day"] = self.combo_day.currentText()
+        cfg_data["bth_month"] = numeric_month
+
+        if save_config(cfg_data):
+            self._completed = True
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Error", f"{data['config_err']}save failed")
+
+    def closeEvent(self, event):
+        if not self._completed:
+            event.ignore()
+        else:
+            super().closeEvent(event)
+
+class YisukmDownloaderWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
         self.current_lang = "EN"
         self.is_topmost = False
-        
-        self.style = ttk.Style()
-        self.style.theme_use('default')
-        
-        root.option_add('*TCombobox*Listbox.background', '#161719')
-        root.option_add('*TCombobox*Listbox.foreground', '#ffffff')
-        root.option_add('*TCombobox*Listbox.selectBackground', '#8a1a1a')
-        root.option_add('*TCombobox*Listbox.selectForeground', '#ffffff')
-        root.option_add('*TCombobox*Listbox.font', ('Segoe UI', 10))
-        root.option_add('*TCombobox*Listbox.borderWidth', 0)
-        root.option_add('*TCombobox*Listbox.highlightThickness', 0)
-        
-        self.style.configure('.', background='#0b0c0d', foreground='#ffffff')
-        self.style.configure('TLabel', background='#0b0c0d', foreground='#ffffff', font=('Segoe UI', 10, 'semibold'))
-        
-        self.style.configure('Custom.TCombobox', fieldbackground='#111214', background='#111214', foreground='#ffffff', font=('Segoe UI', 10), borderwidth=0, arrowcolor='#ffffff', relief='flat')
-        self.style.map('Custom.TCombobox', 
-            fieldbackground=[('readonly', '#111214')],
-            foreground=[('readonly', '#ffffff')],
-            background=[('readonly', '#111214')],
-            arrowcolor=[('readonly', '#ffffff')]
-        )
-        
-        self.style.configure("Custom.Horizontal.TProgressbar", troughcolor='#161719', background="#af6f25", thickness=4, borderwidth=0)
+        self.is_downloading = False
+        self.download_worker = None
+        self.ytdlp_update_worker = None
+        self.app_update_check_worker = None
+        self.app_update_download_worker = None
+        self.melody_worker = None
+        self.sound_worker = None
 
-        header_frame = tk.Frame(root, bg="#0b0c0d")
-        header_frame.pack(fill="x", padx=25, pady=(20, 5))
-        
-        self.lbl_title = tk.Label(header_frame, text="", bg="#0b0c0d", fg="#8a1a1a", font=('Segoe UI', 14, 'bold'))
-        self.lbl_title.pack(side="left", anchor="w")
-        
-        self.lbl_subtitle = tk.Label(header_frame, text="", bg="#0b0c0d", fg="#4f5256", font=('Segoe UI', 9, 'italic'))
-        self.lbl_subtitle.pack(side="right", anchor="e", pady=(4, 0))
-        
-        divider = tk.Frame(root, bg="#3a3d40", height=1)
-        divider.pack(fill="x", padx=25, pady=(0, 15))
+        self.setWindowTitle(f"dlp-yisk - v{LOCAL_VERSION}")
+        self.setFixedSize(650, 520)
 
-        lang_frame = tk.Frame(root, bg="#0b0c0d")   
-        lang_frame.pack(anchor="e", padx=25, pady=(0, 5))
-        
-        self.btn_lang_en = tk.Button(lang_frame, text="EN", bg="#161719", fg="#ffffff", font=('Segoe UI', 7, 'bold'), bd=0, relief="flat", width=4, cursor="hand2", command=lambda: self.switch_language("EN"))
-        self.btn_lang_en.pack(side="left", padx=2)
-        self.btn_lang_en.bind("<Enter>", lambda e: self.btn_lang_en.configure(bg="#222428"))
-        self.btn_lang_en.bind("<Leave>", lambda e: self.btn_lang_en.configure(bg="#161719" if self.current_lang != "EN" else "#8a1a1a"))
-        
-        self.btn_lang_es = tk.Button(lang_frame, text="ES", bg="#161719", fg="#ffffff", font=('Segoe UI', 7, 'bold'), bd=0, relief="flat", width=4, cursor="hand2", command=lambda: self.switch_language("ES"))
-        self.btn_lang_es.pack(side="left", padx=2)
-        self.btn_lang_es.bind("<Enter>", lambda e: self.btn_lang_es.configure(bg="#222428"))
-        self.btn_lang_es.bind("<Leave>", lambda e: self.btn_lang_es.configure(bg="#161719" if self.current_lang != "ES" else "#8a1a1a"))
+        if os.path.exists(app_icon_path):
+            self.setWindowIcon(QIcon(app_icon_path))
 
-        self.btn_lang_ko = tk.Button(lang_frame, text="KO", bg="#161719", fg="#ffffff", font=('Segoe UI', 7, 'bold'), bd=0, relief="flat", width=4, cursor="hand2", command=lambda: self.switch_language("KO"))
-        self.btn_lang_ko.pack(side="left", padx=2)
-        self.btn_lang_ko.bind("<Enter>", lambda e: self.btn_lang_ko.configure(bg="#222428"))
-        self.btn_lang_ko.bind("<Leave>", lambda e: self.btn_lang_ko.configure(bg="#161719" if self.current_lang != "KO" else "#8a1a1a"))
-
-        self.btn_update_ytdlp = tk.Button(lang_frame, text="⚙", bg="#763F00", fg="#FFFFFF", font=('Segoe UI', 9), bd=0, relief="flat", width=4, cursor="hand2", command=self.update_ytdlp_binary)
-        self.btn_update_ytdlp.pack(side="left", padx=(10, 1))
-        self.btn_update_ytdlp.bind("<Enter>", lambda e: self.btn_update_ytdlp.configure(bg="#763F00"))
-        self.btn_update_ytdlp.bind("<Leave>", lambda e: self.btn_update_ytdlp.configure(bg="#763F00"))
-
-        self.btn_pin = tk.Button(lang_frame, text="⚓", bg="#161719", fg="#ffffff", font=('Segoe UI Symbol', 9), anchor="center", padx=0, bd=0, relief="flat", width=4, cursor="hand2", command=self.toggle_topmost)
-        self.btn_pin.pack(side="left", padx=(2, 0))
-        self.btn_pin.bind("<Enter>", lambda e: self.btn_pin.configure(bg="#222428" if not self.is_topmost else "#a32424"))
-        self.btn_pin.bind("<Leave>", lambda e: self.btn_pin.configure(bg="#8a1a1a" if self.is_topmost else "#161719"))
-
-        input_frame = tk.Frame(root, bg="#0b0c0d")
-        input_frame.pack(fill="x", padx=25, pady=5)
-        
-        self.lbl_url = tk.Label(input_frame, text="", bg="#0b0c0d", fg="#b2b5b8", font=('Segoe UI', 10, 'bold'))
-        self.lbl_url.pack(anchor="w", pady=2)
-        
-        url_row = tk.Frame(input_frame, bg="#0b0c0d")
-        url_row.pack(fill="x", pady=5)
-
-        self.entry_url = tk.Entry(url_row, bg="#111214", fg="#ffffff", insertbackground="#ffffff", highlightbackground="#3a3d40", highlightcolor="#8a1a1a", highlightthickness=1, bd=0, font=('Consolas', 11))
-        self.entry_url.pack(side="left", fill="x", expand=True, ipady=8)
-        self.root.focus_set()
-        self.entry_url.bind("<Return>", lambda event: self.start_download_thread())
-
-        def on_focus_in(event):
-            placeholder_actual = LANGUAGES[self.current_lang]["placeholder"]
-            if self.entry_url.get() == placeholder_actual:
-                self.entry_url.delete(0, tk.END)
-                self.entry_url.configure(fg="#ffffff")
-                
-        def on_focus_out(event):
-            placeholder_actual = LANGUAGES[self.current_lang]["placeholder"]
-            if not self.entry_url.get().strip():
-                self.entry_url.insert(0, placeholder_actual)
-                self.entry_url.configure(fg="#4f5256")
-                
-        self.entry_url.bind("<FocusIn>", on_focus_in)
-        self.entry_url.bind("<FocusOut>", on_focus_out)
-
-        self.btn_run = tk.Button(url_row, text="", bg="#8a1a1a", fg="#ffffff", activebackground="#a32424", activeforeground="#ffffff", font=('Segoe UI Semibold', 9, 'bold'), bd=0, relief="flat", cursor="hand2", width=12, command=self.start_download_thread)
-        self.btn_run.pack(side="right", padx=(12, 0), ipady=7)
-        self.btn_run.bind("<Enter>", lambda e: self.btn_run.configure(bg="#a32424") if self.btn_run["state"] == "normal" else None)
-        self.btn_run.bind("<Leave>", lambda e: self.btn_run.configure(bg="#8a1a1a") if self.btn_run["state"] == "normal" else None)
-
-        options_frame = tk.Frame(root, bg="#0b0c0d")
-        options_frame.pack(fill="x", padx=25, pady=10)
-        
-        self.lbl_action = tk.Label(options_frame, text="", bg="#0b0c0d", fg="#b2b5b8", font=('Segoe UI', 10, 'bold'))
-        self.lbl_action.pack(side="left", padx=(0, 10))
-        
-        combo_border = tk.Frame(options_frame, bg="#3a3d40", bd=1)
-        combo_border.pack(side="left", fill="x", expand=True)
-
-        self.combo_options = ttk.Combobox(combo_border, state="readonly", width=45, style='Custom.TCombobox')
-        self.combo_options.pack(fill="x", expand=True)
-        
-        self.combo_options.bind("<Delete>", lambda event: (self.combo_options.configure(state="normal"), self.combo_options.delete(0, tk.END), self.combo_options.configure(state="readonly"), self.style.map('Custom.TCombobox', fieldbackground=[('readonly', '#111214')]), self.combo_options.configure(style='Custom.TCombobox')))
-        self.combo_options.bind("<BackSpace>", lambda event: (self.combo_options.configure(state="normal"), self.combo_options.delete(0, tk.END), self.combo_options.configure(state="readonly"), self.style.map('Custom.TCombobox', fieldbackground=[('readonly', '#111214')]), self.combo_options.configure(style='Custom.TCombobox')))
-        self.combo_options.bind("<<ComboboxSelected>>", lambda event: (self.combo_options.selection_clear(), self.style.map('Custom.TCombobox', fieldbackground=[('readonly', '#8a1a1a')]), self.combo_options.configure(style='Custom.TCombobox'), self.root.focus()))
-
-        console_frame = tk.Frame(root, bg="#0b0c0d")
-        console_frame.pack(fill="both", expand=True, padx=25, pady=5)
-        
-        self.lbl_console = tk.Label(console_frame, text="", bg="#0b0c0d", fg="#b2b5b8", font=('Segoe UI', 10, 'bold'))
-        self.lbl_console.pack(anchor="w", pady=2)
-
-        self.progress_bar = ttk.Progressbar(console_frame, orient="horizontal", mode="determinate", style="Custom.Horizontal.TProgressbar")
-        self.progress_bar.pack(fill="x", pady=(0, 10))
-        
-        self.txt_console = tk.Text(console_frame, bg="#070809", fg="#efbd61", insertbackground="#efbd61", font=('Consolas', 9), highlightbackground="#111214", highlightthickness=1, bd=0, relief="flat", state="disabled", height=8)
-        self.txt_console.pack(fill="both", expand=True)
-        
-        self.btn_folder = tk.Button(root, text="", bg="#111214", fg="#ffffff", activebackground="#1c1d21", activeforeground="#ffffff", font=('Segoe UI', 10, 'bold'), bd=0, relief="flat", cursor="hand2", command=self.open_downloads_folder)
-        self.btn_folder.pack(fill="x", padx=25, pady=20, ipady=10)
-        self.btn_folder.bind("<Enter>", lambda e: self.btn_folder.configure(bg="#1c1d21"))
-        self.btn_folder.bind("<Leave>", lambda e: self.btn_folder.configure(bg="#111214"))
-
+        apply_dark_title_bar(self)
+        self._build_ui()
         self.update_ui_texts()
 
         timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        init_banner = f"✦  yiskm-downloader  ->  v1.0.0\n----------------------------------------\n[session] {timestamp_str}\n"
-        self.log(init_banner.strip())
+        init_banner = (
+            f"✦  yiskm-downloader  ->  v{LOCAL_VERSION}\n"
+            f"----------------------------------------\n"
+            f"[session] {timestamp_str}"
+        )
+        self.log(init_banner)
 
-    def switch_language(self, lang):
+        QTimer.singleShot(100, self.load_app_config)
+        QTimer.singleShot(1500, self.check_app_updates)
+
+    def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(25, 20, 25, 20)
+        main_layout.setSpacing(12)
+
+        header_layout = QHBoxLayout()
+        self.lbl_title = QLabel()
+        self.lbl_title.setObjectName("TitleLabel")
+        header_layout.addWidget(self.lbl_title)
+        header_layout.addStretch()
+
+        self.lbl_subtitle = QLabel()
+        self.lbl_subtitle.setObjectName("SubtitleLabel")
+        header_layout.addWidget(self.lbl_subtitle)
+        main_layout.addLayout(header_layout)
+
+        divider = QFrame()
+        divider.setObjectName("Divider")
+        divider.setFrameShape(QFrame.HLine)
+        main_layout.addWidget(divider)
+
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setSpacing(6)
+        toolbar_layout.addStretch()
+
+        self.btn_lang_en = self._make_lang_button("EN")
+        self.btn_lang_es = self._make_lang_button("ES")
+        self.btn_lang_ko = self._make_lang_button("KO")
+        toolbar_layout.addWidget(self.btn_lang_en)
+        toolbar_layout.addWidget(self.btn_lang_es)
+        toolbar_layout.addWidget(self.btn_lang_ko)
+
+        toolbar_layout.addSpacing(8)
+
+        self.btn_update_ytdlp = QPushButton()
+        self.btn_update_ytdlp.setObjectName("UpdateBinButton")
+        self.btn_update_ytdlp.setFixedSize(25, 22)
+        self.btn_update_ytdlp.setIcon(create_gear_icon("#ffffff", 12))
+        self.btn_update_ytdlp.setIconSize(QSize(12, 12))
+        self.btn_update_ytdlp.setCursor(Qt.PointingHandCursor)
+        self.btn_update_ytdlp.setToolTip("Update yt-dlp")
+        self.btn_update_ytdlp.clicked.connect(self.update_ytdlp_binary)
+        toolbar_layout.addWidget(self.btn_update_ytdlp)
+
+        self._pin_icon_inactive = create_pin_icon("#a3a3a3", 12)
+        self._pin_icon_active = create_pin_icon("#ffffff", 12)
+
+        self.btn_pin = QPushButton()
+        self.btn_pin.setObjectName("PinButton")
+        self.btn_pin.setFixedSize(25, 22)
+        self.btn_pin.setIcon(self._pin_icon_inactive)
+        self.btn_pin.setIconSize(QSize(12, 12))
+        self.btn_pin.setCursor(Qt.PointingHandCursor)
+        self.btn_pin.setProperty("active", "false")
+        self.btn_pin.clicked.connect(self.toggle_topmost)
+        toolbar_layout.addWidget(self.btn_pin)
+
+        main_layout.addLayout(toolbar_layout)
+
+        self.lbl_url = QLabel()
+        self.lbl_url.setObjectName("SectionLabel")
+        main_layout.addWidget(self.lbl_url)
+
+        url_row = QHBoxLayout()
+        url_row.setSpacing(12)
+
+        self.entry_url = QLineEdit()
+        self.entry_url.returnPressed.connect(self.start_download_thread)
+        url_row.addWidget(self.entry_url, 1)
+
+        self.btn_run = QPushButton()
+        self.btn_run.setObjectName("PrimaryButton")
+        self.btn_run.setCursor(Qt.PointingHandCursor)
+        self.btn_run.setMinimumWidth(120)
+        self.btn_run.clicked.connect(self.start_download_thread)
+        url_row.addWidget(self.btn_run)
+
+        main_layout.addLayout(url_row)
+
+        options_row = QHBoxLayout()
+        options_row.setSpacing(12)
+
+        self.lbl_action = QLabel()
+        self.lbl_action.setObjectName("SectionLabel")
+        options_row.addWidget(self.lbl_action)
+
+        self.combo_options = VectorComboBox()
+        self.combo_options.setProperty("selected", "false")
+        self.combo_options.currentIndexChanged.connect(self._on_option_changed)
+        self.combo_options.installEventFilter(self)
+        options_row.addWidget(self.combo_options, 1)
+
+        main_layout.addLayout(options_row)
+
+        self.lbl_console = QLabel()
+        self.lbl_console.setObjectName("SectionLabel")
+        main_layout.addWidget(self.lbl_console)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        main_layout.addWidget(self.progress_bar)
+
+        self.txt_console = QPlainTextEdit()
+        self.txt_console.setObjectName("ConsoleOutput")
+        self.txt_console.setReadOnly(True)
+        self.txt_console.setMaximumBlockCount(500)
+        main_layout.addWidget(self.txt_console, 1)
+
+        self.btn_folder = QPushButton()
+        self.btn_folder.setObjectName("FolderButton")
+        self.btn_folder.setCursor(Qt.PointingHandCursor)
+        self.btn_folder.clicked.connect(self.open_downloads_folder)
+        main_layout.addWidget(self.btn_folder)
+
+    def _make_lang_button(self, code: str) -> QPushButton:
+        btn = QPushButton(code)
+        btn.setObjectName("LangButton")
+        btn.setFixedSize(34, 22)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setProperty("active", "false")
+        btn.clicked.connect(lambda _=False, c=code: self.switch_language(c))
+        return btn
+
+    def _refresh_widget_style(self, widget: QWidget):
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+    def eventFilter(self, obj, event):
+        if obj is self.combo_options and event.type() == QEvent.KeyPress:
+            if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+                self.combo_options.setCurrentIndex(-1)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _on_option_changed(self, index: int):
+        is_selected = "true" if index >= 0 else "false"
+        self.combo_options.setProperty("selected", is_selected)
+        self._refresh_widget_style(self.combo_options)
+
+    def switch_language(self, lang: str):
+        if lang not in LANGUAGES:
+            return
         self.current_lang = lang
         if os.path.exists(config_file_path):
             update_config_value("idioma", lang)
 
-        for btn, l_code in [(self.btn_lang_en, "EN"), (self.btn_lang_es, "ES"), (self.btn_lang_ko, "KO")]:
-            if l_code == lang:
-                btn.configure(bg="#8a1a1a", fg="#ffffff")
-            else:
-                btn.configure(bg="#161719", fg="#ffffff")
+        for btn, code in [(self.btn_lang_en, "EN"), (self.btn_lang_es, "ES"), (self.btn_lang_ko, "KO")]:
+            btn.setProperty("active", "true" if code == lang else "false")
+            self._refresh_widget_style(btn)
 
         self.update_ui_texts()
 
-    def set_topmost(self, state):
+    def set_topmost(self, state: bool):
         self.is_topmost = bool(state)
-        self.root.attributes('-topmost', self.is_topmost)
-        if self.is_topmost:
-            self.btn_pin.configure(bg="#8a1a1a")
-        else:
-            self.btn_pin.configure(bg="#161719")
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, self.is_topmost)
+        self.show()
+        apply_dark_title_bar(self)
+
+        self.btn_pin.setProperty("active", "true" if self.is_topmost else "false")
+        self.btn_pin.setIcon(self._pin_icon_active if self.is_topmost else self._pin_icon_inactive)
+        self._refresh_widget_style(self.btn_pin)
 
     def toggle_topmost(self):
         self.set_topmost(not self.is_topmost)
@@ -536,164 +1064,195 @@ class YisukmDownloaderScript:
 
     def update_ui_texts(self):
         data = LANGUAGES[self.current_lang]
-        self.lbl_title.configure(text=data["title"])
-        self.lbl_subtitle.configure(text=data["subtitle"])
-        self.lbl_url.configure(text=data["url_label"])
-        self.lbl_action.configure(text=data["action_label"])
-        self.lbl_console.configure(text=data["console_label"])
-        
-        current_idx = self.combo_options.current()
-        self.combo_options['values'] = data["options"]
-        if current_idx >= 0:
-            self.combo_options.current(current_idx)
+        self.lbl_title.setText(data["title"])
+        self.lbl_subtitle.setText(data["subtitle"])
+        self.lbl_url.setText(data["url_label"])
+        self.lbl_action.setText(data["action_label"])
+        self.lbl_console.setText(data["console_label"])
+        self.entry_url.setPlaceholderText(data["placeholder"])
+        self.btn_folder.setText(data["btn_folder"])
+
+        current_idx = self.combo_options.currentIndex()
+        self.combo_options.blockSignals(True)
+        self.combo_options.clear()
+        self.combo_options.addItems(data["options"])
+        self.combo_options.setPlaceholderText(data["action_placeholder"])
+        self.combo_options.setCurrentIndex(current_idx if current_idx >= 0 else -1)
+        self.combo_options.blockSignals(False)
+        self._on_option_changed(self.combo_options.currentIndex())
+
+        if not self.is_downloading:
+            self.btn_run.setText(data["btn_run"])
         else:
-            self.combo_options.set("")
-            
-        if self.btn_run["state"] == "normal":
-            self.btn_run.configure(text=data["btn_run"])
-        else:
-            self.btn_run.configure(text="..." if self.current_lang == "EN" else "...")
-            
-        if self.current_lang == "ES":
-            self.btn_folder.configure(text="ABRIR DESCARGAS")
-        elif self.current_lang == "KO":
-            self.btn_folder.configure(text="다운로드 폴더 열기")
-        else:
-            self.btn_folder.configure(text="OPEN DOWNLOADS")    
+            self.btn_run.setText("...")
 
-        text_url = self.entry_url.get()
-        es_placeholder = any(text_url == LANGUAGES[lang]["placeholder"] or not text_url.strip() for lang in LANGUAGES)
-        
-        if es_placeholder:
-            self.entry_url.delete(0, tk.END)
-            self.entry_url.insert(0, data["placeholder"])
-            self.entry_url.configure(fg="#4f5256")
-
-
-    def log(self, text):
-        self.txt_console.configure(state="normal")
-        self.txt_console.insert(tk.END, text + "\n")
-        if float(self.txt_console.index('end-1c')) > 500.0:
-            self.txt_console.delete('1.0', '2.0')  
-        self.txt_console.see(tk.END)
-        self.txt_console.configure(state="disabled")
-
+    def log(self, text: str):
+        self.txt_console.appendPlainText(text)
+        scrollbar = self.txt_console.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
     def clear_log(self):
-        self.txt_console.configure(state="normal")
-        self.txt_console.delete('1.0', tk.END)
-        self.txt_console.configure(state="disabled")
+        self.txt_console.clear()
 
-    def start_download_thread(self):
-        data = LANGUAGES[self.current_lang]
-        
-        if not self.combo_options.get().strip():
-            messagebox.showerror("Error", data["err_format"], parent=self.root)
+    def _play_sound_alert(self):
+        self.sound_worker = SoundAlertWorker(self)
+        self.sound_worker.start()
+
+    def load_app_config(self):
+        if not os.path.exists(config_file_path):
+            lang_dlg = LanguageDialog(self)
+            if lang_dlg.exec() == QDialog.Accepted:
+                self.switch_language(lang_dlg.selected_lang)
+                bth_dlg = BirthdateDialog(lang_dlg.selected_lang, self)
+                if bth_dlg.exec() == QDialog.Accepted:
+                    self.load_app_config()
             return
-            
-        url = self.entry_url.get()
-        if url == data["placeholder"] or not url.strip():
-            messagebox.showerror("Error", data["err_valid"], parent=self.root)
-            return
-
-        clean_url = url.strip()
-            
-        self.btn_run.configure(state="disabled", bg="#333333", text="...")
-        self.clear_log()
-        thread = threading.Thread(target=self.execute_ytdlp, args=(clean_url,))
-        thread.daemon = True
-        thread.start()
-
-    def execute_ytdlp(self, url):
-        idx = self.combo_options.current()
-        data = LANGUAGES[self.current_lang]
-        self.log(data["logs"][idx])
-
-        cmd = build_ytdlp_command(idx, url)
 
         try:
-            self.root.after(0, lambda: self.progress_bar.configure(value=0))
-            returncode = run_download_subprocess(
-                cmd,
-                log_callback=lambda t: self.root.after(0, lambda msg=t: self.log(msg)),
-                speed_callback=lambda v: self.root.after(0, lambda spd=v: self.root.title(f"YT-DLP [Speed: {spd}]")),
-                progress_callback=lambda p: self.root.after(0, lambda pct=p: self.progress_bar.configure(value=pct)),
-            )
+            data = load_config()
+            saved_language = data.get("idioma", "EN")
+            saved_topmost = data.get("topmost", False)
 
-            self.root.after(0, lambda: self.root.title("YT-DLP"))
-            if returncode == 0:
-                self.root.after(0, lambda: self.progress_bar.configure(value=100))
-                self.log(data["msg_success"])
-                sound_alert()
-            else:
-                self.log(f"{data['msg_warn']}{returncode}")
-        except Exception as e:
-            self.log(f"{data['msg_crit']}{str(e)}")
-        self.root.after(0, self.reset_button)
+            self.switch_language(saved_language)
+            self.set_topmost(saved_topmost)
 
-    def reset_button(self):
+            day_txt = data.get("bth_day", "")
+            month_txt = data.get("bth_month", "")
+
+            if not day_txt or not month_txt:
+                bth_dlg = BirthdateDialog(saved_language, self)
+                if bth_dlg.exec() == QDialog.Accepted:
+                    self.load_app_config()
+                return
+
+            birth_d = int(day_txt)
+            birth_m = int(month_txt)
+            self.melody_worker = EventMelodyWorker(birth_d, birth_m, self)
+            self.melody_worker.start()
+        except Exception:
+            pass
+
+    def start_download_thread(self):
+        if self.is_downloading:
+            return
+
         data = LANGUAGES[self.current_lang]
-        self.btn_run.configure(state="normal", bg="#8b0000", text=data["btn_run"])
+        idx = self.combo_options.currentIndex()
+        if idx < 0:
+            QMessageBox.critical(self, "Error", data["err_format"])
+            return
+
+        clean_url = self.entry_url.text().strip()
+        if not clean_url:
+            QMessageBox.critical(self, "Error", data["err_valid"])
+            return
+
+        self.is_downloading = True
+        self.btn_run.setEnabled(False)
+        self.btn_run.setText("...")
+        self.progress_bar.setValue(0)
+        self.clear_log()
+        self.log(data["logs"][idx])
+
+        cmd = build_ytdlp_command(idx, clean_url)
+        self.download_worker = DownloadWorker(cmd, self)
+        self.download_worker.log_received.connect(self._on_worker_log)
+        self.download_worker.speed_updated.connect(self._on_worker_speed)
+        self.download_worker.progress_updated.connect(self._on_worker_progress)
+        self.download_worker.finished.connect(self._on_download_finished)
+        self.download_worker.start()
+
+    def _on_worker_log(self, msg: str):
+        data = LANGUAGES[self.current_lang]
+        if msg.startswith("CRITICAL_ERROR::"):
+            err = msg.split("CRITICAL_ERROR::", 1)[1]
+            self.log(f"{data['msg_crit']}{err}")
+        else:
+            self.log(msg)
+
+    def _on_worker_speed(self, speed: str):
+        self.setWindowTitle(f"DLP-YISK [Speed: {speed}]")
+        
+    def _on_worker_progress(self, pct: float):
+        self.progress_bar.setValue(int(round(pct)))
+
+    def _on_download_finished(self, returncode: int):
+        data = LANGUAGES[self.current_lang]
+        self.setWindowTitle(f"DLP-YISK - v{LOCAL_VERSION}")
+
+        if returncode == 0:
+            self.progress_bar.setValue(100)
+            self.log(data["msg_success"])
+            self._play_sound_alert()
+        elif returncode > 0:
+            self.log(f"{data['msg_warn']}{returncode}")
+
+        self.is_downloading = False
+        self.btn_run.setEnabled(True)
+        self.btn_run.setText(data["btn_run"])
 
     def open_downloads_folder(self):
-        idx = self.combo_options.current()
+        idx = self.combo_options.currentIndex()
         target_dir = get_target_dir_for_option(idx)
         os.makedirs(target_dir, exist_ok=True)
         os.startfile(target_dir)
 
     def update_ytdlp_binary(self):
-        def run_update():
-            data = LANGUAGES[self.current_lang]
-            self.root.after(0, self.clear_log)
-            self.root.after(0, lambda: self.log(data["msg_update"]))
-            try:
-                returncode = run_ytdlp_updater(
-                    log_callback=lambda msg: self.root.after(0, lambda m=msg: self.log(m))
-                )
-                if returncode == 0:
-                    sound_alert()
-            except Exception as e:
-                self.log(f"{data['err_update']}{str(e)}")
+        if self.ytdlp_update_worker and self.ytdlp_update_worker.isRunning():
+            return
 
-        thread = threading.Thread(target=run_update, daemon=True)
-        thread.start()
+        data = LANGUAGES[self.current_lang]
+        self.clear_log()
+        self.log(data["msg_update"])
+
+        self.ytdlp_update_worker = YtDlpUpdateWorker(self)
+        self.ytdlp_update_worker.log_received.connect(self.log)
+        self.ytdlp_update_worker.update_finished.connect(self._on_ytdlp_update_finished)
+        self.ytdlp_update_worker.error_occurred.connect(
+            lambda err: self.log(f"{LANGUAGES[self.current_lang]['err_update']}{err}")
+        )
+        self.ytdlp_update_worker.start()
+
+    def _on_ytdlp_update_finished(self, returncode: int):
+        if returncode == 0:
+            self._play_sound_alert()
 
     def check_app_updates(self):
-        def run_check():
-            try:
-                has_update, remote_version, installer_url = check_latest_release()
-                if has_update and installer_url:
-                    self.root.after(0, lambda: self.prompt_app_update(remote_version, installer_url))
-            except Exception:
-                pass
+        self.app_update_check_worker = AppUpdateCheckWorker(self)
+        self.app_update_check_worker.update_available.connect(self.prompt_app_update)
+        self.app_update_check_worker.start()
 
-        thread = threading.Thread(target=run_check, daemon=True)
-        thread.start()
-
-    def prompt_app_update(self, remote_version, installer_url):
-        ans = messagebox.askyesno("Update Available", f"A new version ({remote_version}) is available.\nDo you want to update now?", parent=self.root)
-        if ans:
+    def prompt_app_update(self, remote_version: str, installer_url: str):
+        data = LANGUAGES[self.current_lang]
+        ans = QMessageBox.question(
+            self,
+            data["app_update_title"],
+            data["app_update_prompt"].format(version=remote_version),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if ans == QMessageBox.Yes:
             self.clear_log()
-            self.log("[+] Downloading application update package...")
+            self.log(data["app_update_downloading"])
 
-            def close_for_update():
-                self.root.quit()
-                self.root.destroy()
+            self.app_update_download_worker = AppUpdateDownloadWorker(installer_url, self)
+            self.app_update_download_worker.download_finished.connect(QApplication.quit)
+            self.app_update_download_worker.error_occurred.connect(
+                lambda err: self.log(f"{LANGUAGES[self.current_lang]['app_update_failed']}{err}")
+            )
+            self.app_update_download_worker.start()
 
-            def run_download():
-                try:
-                    download_and_run_updater(installer_url)
-                    self.root.after(0, close_for_update)
-                except Exception as e:
-                    self.root.after(0, lambda err=str(e): self.log(f"[!] Update failed: {err}"))
 
-            threading.Thread(target=run_download, daemon=True).start()
+def main():
+    multiprocessing.freeze_support()
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setStyleSheet(DARK_QSS)
+
+    window = YisukmDownloaderWindow()
+    window.show()
+    sys.exit(app.exec())
+
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
-    root = tk.Tk()
-    app = YisukmDownloaderScript(root)
-    apply_dark_title_bar(root)
-    root.after(1500, app.check_app_updates)
-    root.after(100, lambda: load_app_config(root, app))
-    root.mainloop()
+    main()
