@@ -231,7 +231,7 @@ QWidget {
 }
 
 QLabel#TitleLabel {
-    color: #b91c1c;
+    color: #a32020;
     font-size: 18px;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -268,7 +268,7 @@ QFrame#Divider {
 
 QLineEdit {
     background-color: #0a0a0a;
-    color: #ffffff;
+    color: #e5e5e5;
     border: 1px solid #1f1f1f;
     border-radius: 4px;
     padding: 8px 12px;
@@ -319,7 +319,7 @@ QPushButton#LangButton:hover {
 QPushButton#LangButton[active="true"] {
     background-color: #8a1a1a;
     border: none;
-    color: #ffffff;
+    color: #e5e5e5;
 }
 
 QPushButton#LangButton[active="true"]:hover {
@@ -410,7 +410,8 @@ QPushButton#FolderButton:pressed {
 
 QComboBox {
     background-color: #0a0a0a;
-    color: #ffffff;
+    combobox-popup: 0;
+    color: #e5e5e5;
     border: 1px solid #1f1f1f;
     border-radius: 4px;
     padding: 7px 12px;
@@ -448,12 +449,12 @@ QComboBox::down-arrow {
 
 QComboBox QAbstractItemView {
     background-color: #0a0a0a;
-    color: #ffffff;
+    color: #e5e5e5;
     border: 1px solid #1f1f1f;
     border-radius: 4px;
     max-height: 200px;
     selection-background-color: #8a1a1a;
-    selection-color: #ffffff;
+    selection-color: #e5e5e5;
     outline: 0;
     padding: 4px;
 }
@@ -489,7 +490,7 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background-color: #c2410c;
+    background-color: #ff9a00;
     border-radius: 3px;
 }
 
