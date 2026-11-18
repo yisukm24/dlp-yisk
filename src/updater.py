@@ -7,7 +7,7 @@ import urllib.request
 from paths import ytdlp_exe_path
 
 GITHUB_RELEASES_API = "https://api.github.com/repos/yisukm24/dlp-yisk/releases/latest"
-LOCAL_VERSION = "1.0.0"
+LOCAL_VERSION = "1.0.1"
 INSTALLER_FILENAME = "dlp_yisk_setup.exe"
 INSTALLER_SILENT_ARGS = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"]
 
